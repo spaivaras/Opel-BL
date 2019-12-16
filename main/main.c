@@ -38,7 +38,8 @@
 #define GPIO_INPUT_PIN_SEL  ((1ULL<<GPIO_INPUT_IO_0))
 #define ESP_INTR_FLAG_DEFAULT 0
 
-
+#define CAN_TIMING_CONFIG_95KBITS()  {.brp = 42, .tseg_1 = 15, .tseg_2 = 4, .sjw = 3, .triple_sampling = false}
+#define CAN_TIMING_CONFIG_33K3BITS() {.brp = 120, .tseg_1 = 15, .tseg_2 = 4, .sjw = 3, .triple_sampling = false}
 
 /* event for handler "bt_av_hdl_stack_up */
 enum {
@@ -57,7 +58,7 @@ static const can_filter_config_t f_config = {
 		.acceptance_mask = 0,
 		.single_filter = true
 };
-static const can_timing_config_t t_config = CAN_TIMING_CONFIG_25KBITS();
+static const can_timing_config_t t_config = CAN_TIMING_CONFIG_95KBITS();
 static const can_general_config_t g_config = {
 		.mode = CAN_MODE_LISTEN_ONLY,
 		.tx_io = 23, .rx_io = 34,
@@ -216,10 +217,10 @@ void app_main() {
 	gpio_isr_handler_add(GPIO_INPUT_IO_0, gpio_isr_handler, (void*)GPIO_INPUT_IO_0);
 
 	// Prepare CAN
-	xTaskCreate(can_receive_task, "CAN_rx", 4096, NULL, 9, NULL);
 	ESP_ERROR_CHECK(can_driver_install(&g_config, &t_config, &f_config));
 	ESP_LOGI("CAN", "Driver installed");
 	ESP_ERROR_CHECK(can_start());
+	xTaskCreate(can_receive_task, "CAN_rx", 4096, NULL, 9, NULL);
 	ESP_LOGI("CAN", "Driver started");
 }
 
