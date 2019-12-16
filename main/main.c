@@ -1,16 +1,13 @@
-// Copyright 2015-2016 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
+// Original work: Copyright 2015-2016 Espressif Systems (Shanghai) PTE LTD
+// Released under the Apache License, Version 2.0
 // You may obtain a copy of the License at
-
 //     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+
+// Modified work: Copyright 2019 Aivaras Spaicys
+// Licensed under the GNU Affero General Public License v3.0
+// You may obtain a copy of the License at
+//     https://opensource.org/licenses/AGPL-3.0
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +30,7 @@
 #include "esp_avrc_api.h"
 #include "driver/i2s.h"
 #include "driver/can.h"
+#include "eeprom.h"
 
 #define GPIO_INPUT_IO_0     0
 #define GPIO_INPUT_PIN_SEL  ((1ULL<<GPIO_INPUT_IO_0))
@@ -123,9 +121,10 @@ void app_main() {
 		err = nvs_flash_init();
 	}
 	ESP_ERROR_CHECK(err);
+	ESP_ERROR_CHECK_WITHOUT_ABORT(init_settings());
 
 	i2s_config_t i2s_config = {
-		#ifdef CONFIG_EXAMPLE_A2DP_SINK_OUTPUT_INTERNAL_DAC
+		#ifdef CONFIG_OUTPUT_INTERNAL_DAC
 			.mode = I2S_MODE_MASTER | I2S_MODE_TX | I2S_MODE_DAC_BUILT_IN,
 		#else
 			.mode = I2S_MODE_MASTER | I2S_MODE_TX,        // Only TX
@@ -141,14 +140,14 @@ void app_main() {
 	};
 	i2s_driver_install(0, &i2s_config, 0, NULL);
 
-	#ifdef CONFIG_EXAMPLE_A2DP_SINK_OUTPUT_INTERNAL_DAC
+	#ifdef CONFIG_OUTPUT_INTERNAL_DAC
     	i2s_set_dac_mode(I2S_DAC_CHANNEL_BOTH_EN);
     	i2s_set_pin(0, NULL);
 	#else
 		i2s_pin_config_t pin_config = {
-			.bck_io_num = CONFIG_EXAMPLE_I2S_BCK_PIN,
-			.ws_io_num = CONFIG_EXAMPLE_I2S_LRCK_PIN,
-			.data_out_num = CONFIG_EXAMPLE_I2S_DATA_PIN,
+			.bck_io_num = CONFIG_I2S_BCK_PIN,
+			.ws_io_num = CONFIG_I2S_LRCK_PIN,
+			.data_out_num = CONFIG_I2S_DATA_PIN,
 			.data_in_num = -1                                 //Not used
 		};
 		i2s_set_pin(0, &pin_config);
@@ -200,6 +199,7 @@ void app_main() {
 	pin_code[3] = '4';
 	esp_bt_gap_set_pin(pin_type, 4, pin_code);
 
+
 	// Prepare GPIO
 	gpio_config_t io_conf;
 	io_conf.intr_type = GPIO_PIN_INTR_NEGEDGE;
@@ -230,6 +230,8 @@ void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param) {
 			if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
 				ESP_LOGI(BT_AV_TAG, "authentication success: %s", param->auth_cmpl.device_name);
 				esp_log_buffer_hex(BT_AV_TAG, param->auth_cmpl.bda, ESP_BD_ADDR_LEN);
+
+				ESP_ERROR_CHECK_WITHOUT_ABORT(save_bda(param->auth_cmpl.bda));
 			} else {
 				ESP_LOGE(BT_AV_TAG, "authentication failed, status:%d", param->auth_cmpl.stat);
 			}
@@ -275,14 +277,19 @@ static void bt_av_hdl_stack_evt(uint16_t event, void *p_param) {
 			assert(esp_avrc_tg_init() == ESP_OK);
 			esp_avrc_tg_register_callback(bt_app_rc_tg_cb);
 
-//			esp_avrc_rn_evt_cap_mask_t evt_set = { 0 };
-//			esp_avrc_rn_evt_bit_mask_operation(ESP_AVRC_BIT_MASK_OP_SET, &evt_set, ESP_AVRC_RN_VOLUME_CHANGE);
-//			ESP_ERROR_CHECK(esp_avrc_tg_set_rn_evt_cap(&evt_set));
-
 			// Initialize A2DP sink
 			esp_a2d_register_callback(&bt_app_a2d_cb);
 			esp_a2d_sink_register_data_callback(bt_app_a2d_data_cb);
 			esp_a2d_sink_init();
+
+			uint8_t *bda = malloc(ESP_BD_ADDR_LEN);
+			esp_err_t err = load_bda(bda);
+
+			if (!err) {
+				ESP_ERROR_CHECK_WITHOUT_ABORT(esp_a2d_sink_connect(bda));
+			}
+
+			free(bda);
 
 			// Set discoverable and connectable mode, wait to be connected
 			esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);

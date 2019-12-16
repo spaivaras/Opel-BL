@@ -1,10 +1,8 @@
-/*
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
+// Copyright 2019 Aivaras Spaicys
+// Licensed under the GNU Affero General Public License v3.0
+// You may obtain a copy of the License at
+//     https://opensource.org/licenses/AGPL-3.0
 
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
 
 #include <stdint.h>
 #include <string.h>
