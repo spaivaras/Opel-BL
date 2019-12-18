@@ -349,6 +349,12 @@ void bt_av_send_next_press()
 	ESP_ERROR_CHECK_WITHOUT_ABORT(esp_avrc_ct_send_passthrough_cmd(0, ESP_AVRC_PT_CMD_FORWARD, ESP_AVRC_PT_CMD_STATE_PRESSED));
 }
 
+void bt_av_send_prev_press()
+{
+	ESP_LOGI(BT_RC_TG_TAG, "Sending BACK button");
+	ESP_ERROR_CHECK_WITHOUT_ABORT(esp_avrc_ct_send_passthrough_cmd(0, ESP_AVRC_PT_CMD_BACKWARD, ESP_AVRC_PT_CMD_STATE_PRESSED));
+}
+
 
 static void bt_av_hdl_avrc_tg_evt(uint16_t event, void *p_param)
 {

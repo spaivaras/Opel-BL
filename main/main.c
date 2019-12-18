@@ -51,9 +51,12 @@ static xQueueHandle gpio_evt_queue = NULL;
 static void bt_av_hdl_stack_evt(uint16_t event, void *p_param);
 
 static const can_filter_config_t f_config = {
-		// Acceptance code  b[31..29] removed b[1..0] doesn't matter b[2] RTR
-		.acceptance_code = 0b10000000011010000000001100000000,
-		.acceptance_mask = 0,
+		// Acceptance code for 29b  ID[31..3], RTR[2], dosnt' matter[1..0]. Note ID bits moved to left by 3 bits. 32BIT id << 3
+		// Acceptance code for 11b: ID[13..3], RTR[2], dosnt' matter[1..0]. Docu lies!!! on 33.3k? but not on 95k? need to investigate
+		.acceptance_code = 0b01000000110000000000000000000000,  //0x206
+		.acceptance_mask = 0b00000000000111111111111111111111,
+		//.acceptance_code = 0,
+		//.acceptance_mask = 0xFFFFFFFF,
 		.single_filter = true
 };
 static const can_timing_config_t t_config = CAN_TIMING_CONFIG_95KBITS();
@@ -91,6 +94,9 @@ static void gpio_manager(void *arg) {
 	}
 }
 
+static volatile bool next_pressed = 0;
+static volatile bool prev_pressed = 0;
+
 static void can_receive_task(void *arg) {
 	ESP_LOGI("CAN", "CAN task on core %d", xPortGetCoreID());
 
@@ -98,19 +104,33 @@ static void can_receive_task(void *arg) {
 		can_message_t rx_msg;
 		can_receive(&rx_msg, portMAX_DELAY);
 
-		uint8_t prio = (rx_msg.identifier >> 26) & 0b1111;
-		uint16_t abr_id = (rx_msg.identifier >> 13) & 0x1FFF;
-		uint16_t sender = rx_msg.identifier & 0x1FFF;
-		ESP_LOGI("CAN",
-				"ODB2 Message\n  PRIO:    0x%02X\n  abr id:  0x%02X\n  sender:  0x%02X\n  data[2]: 0x%02X",
-				prio, abr_id, sender, rx_msg.data[2]);
+		ESP_LOGI("CAN", "ID: %u, DLC: %d", rx_msg.identifier, rx_msg.data_length_code);
 
-		if (rx_msg.data[2] == 0x10) {
-			bt_av_send_next_press();
+		if (rx_msg.data[1] == 0x91) { // UP
+			if (rx_msg.data[0] == 1) {
+				if (!next_pressed) {
+					next_pressed = true;
+					bt_av_send_next_press();
+				}
+			} else {
+				next_pressed = false;
+				ESP_LOGI("CAN", "Next released");
+			}
+		} else {
+			if (rx_msg.data[1] == 0x92) { // DOWN
+				if (rx_msg.data[0] == 1) {
+					if (!prev_pressed) {
+						prev_pressed = true;
+						bt_av_send_prev_press();
+					}
+				} else {
+					prev_pressed = false;
+					ESP_LOGI("CAN", "Prev released");
+				}
+			}
 		}
 	}
 }
-
 
 
 void app_main() {
@@ -222,6 +242,12 @@ void app_main() {
 	ESP_ERROR_CHECK(can_start());
 	xTaskCreate(can_receive_task, "CAN_rx", 4096, NULL, 9, NULL);
 	ESP_LOGI("CAN", "Driver started");
+
+	uint32_t a = 0x206;
+	uint32_t b = a << 3;
+	ESP_LOGI("MATH", "a: %u, b: %u", a, b);
+
+
 }
 
 void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param) {
